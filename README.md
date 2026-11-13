@@ -16,6 +16,7 @@ Seamlessly jump between projects as independent tmux sessions across **any machi
 - **Direct CLI Navigation:** Run `tmux-sessionizer .` or `tmux-sessionizer /path/to/project` to jump directly without fzf.
 - **Sanitized Session Naming:** Automatically normalizes illegal tmux characters (`.`, `:`, spaces) into valid session names (e.g. `~/.config` cleanly becomes `config`).
 - **Flexible Attach/Switch:** Automatically switches if inside tmux or attaches if running from a regular terminal shell.
+- **Oh My Zsh Plugin:** Drop-in custom plugin for Oh My Zsh with `Ctrl+f` keybinding and `tms` alias.
 - **Optional Config Support:** Still supports custom paths and search depths via `~/.config/tmux-sessionizer/tmux-sessionizer.conf`.
 
 ---
@@ -28,12 +29,33 @@ cd ~/projects/tmux-sessionizer-tweaked
 ./install.sh
 ```
 
-Or manually link the script:
+Ensure `~/.local/bin` is in your `$PATH`.
+
+---
+
+## Oh My Zsh (OMZ) Setup
+
+The repository is a ready-to-use Oh My Zsh custom plugin.
+
+### Method 1: Using the Installer
+Running `./install.sh` automatically symlinks the plugin to:
+`~/.oh-my-zsh/custom/plugins/tmux-sessionizer`
+
+### Method 2: Manual Clone
 ```bash
-ln -sf "$(pwd)/tmux-sessionizer" ~/.local/bin/tmux-sessionizer
+git clone git@github.com:Dodoprospy3/tmux-sessionizer-tweaked.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/tmux-sessionizer
 ```
 
-Ensure `~/.local/bin` is in your `$PATH`.
+### Enable in `~/.zshrc`:
+Add `tmux-sessionizer` to your `plugins=(...)` list in `~/.zshrc`:
+```zsh
+plugins=(
+    ...
+    tmux-sessionizer
+)
+```
+
+Now you can press **`Ctrl + f`** directly in your Zsh shell to fuzzy-jump into any project's tmux session! You also get the `tms` shorthand alias.
 
 ---
 
@@ -58,5 +80,5 @@ tmux source ~/.config/tmux/tmux.conf
 
 - `tmux`
 - `fzf`
-- `bash` (3.2+ for macOS, Linux, WSL)
+- `bash` (3.2+ for macOS, Linux, WSL) or `zsh`
 - Optional: `zoxide`, `ghq`
