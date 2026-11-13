@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# Universal tmux-sessionizer
+# Works out-of-the-box on any system (Linux, macOS, WSL) with zero config,
+# while still respecting custom paths from ~/.config/tmux-sessionizer/tmux-sessionizer.conf
+
+# 1. Load user config if it exists
+config_file="${XDG_CONFIG_HOME:-$HOME/.config}/tmux-sessionizer/tmux-sessionizer.conf"
+if [[ -f "$config_file" ]]; then
+    # shellcheck source=/dev/null
+    source "$config_file"
+fi
+
+TS_MAX_DEPTH="${TS_MAX_DEPTH:-1}"
+
+# 2. Handle direct argument (e.g. `tmux-sessionizer .` or `tmux-sessionizer ~/some/dir`)
+if [[ $# -eq 1 ]]; then
+    target="$1"
+    if [[ -d "$target" ]]; then
+        selected=$(cd "$target" 2>/dev/null && pwd -P)
+    else
+        echo "Error: Directory '$target' does not exist." >&2
+        exit 1
+    fi
+else
+    # 3. Dynamic directory collector across any system
+    collect_dirs() {
+        # Custom configured search paths (if defined)
+        if [[ -n "${TS_SEARCH_PATHS[*]}" ]]; then
+            for p in "${TS_SEARCH_PATHS[@]}"; do
+                [[ -d "$p" ]] && find "$p" -mindepth 1 -maxdepth "$TS_MAX_DEPTH" -type d 2>/dev/null
+            done
+        fi
+
+        # Custom extra paths with optional depth (path:depth)
+        if [[ -n "${TS_EXTRA_SEARCH_PATHS[*]}" ]]; then
+            for entry in "${TS_EXTRA_SEARCH_PATHS[@]}"; do
+                local p="${entry%%:*}"
+                local d="${entry##*:}"
+                [[ "$d" == "$p" ]] && d="$TS_MAX_DEPTH"
+                [[ -d "$p" ]] && find "$p" -mindepth 1 -maxdepth "$d" -type d 2>/dev/null
+            done
+        fi
+
+        # Universal candidate directories common across Linux, macOS, WSL, and BSD
+        local candidate_roots=(
+            "$HOME/projects"
+            "$HOME/Projects"
+            "$HOME/code"
+            "$HOME/Code"
+            "$HOME/dev"
+            "$HOME/Dev"
+            "$HOME/devel"
+            "$HOME/developer"
+            "$HOME/Developer"
+            "$HOME/src"
+            "$HOME/Src"
+            "$HOME/repos"
+            "$HOME/Repos"
+            "$HOME/workspace"
+            "$HOME/workspaces"
+            "$HOME/Workspace"
+            "$HOME/git"
+            "$HOME/Git"
+            "$HOME/work"
+            "$HOME/Work"
+            "$HOME/personal"
+            "$HOME/Personal"
+            "$HOME/dotfiles"
+            "$HOME/.dotfiles"
+        )
+
+        for root in "${candidate_roots[@]}"; do
+            if [[ -d "$root" ]]; then
+                find "$root" -mindepth 1 -maxdepth 1 -type d 2>/dev/null
+            fi
+        done
+
+        # Always include ~/.config and $HOME itself
+        [[ -d "$HOME/.config" ]] && echo "$HOME/.config"
+        echo "$HOME"
+
+        # Integrate with zoxide if installed (instant list of frequented projects on any machine)
+        if command -v zoxide >/dev/null 2>&1; then
+            zoxide query -l 2>/dev/null
+        fi
+
+        # Integrate with ghq if installed (all cloned repositories)
+        if command -v ghq >/dev/null 2>&1; then
+            ghq list --full-path 2>/dev/null
+        fi
+
+        # Active tmux sessions' working directories
+        if command -v tmux >/dev/null 2>&1; then
+            tmux list-sessions -F "#{session_path}" 2>/dev/null
+        fi
+    }
+
+    # Filter, validate existing dirs, deduplicate, and pass to fzf
+    selected=$(collect_dirs | while IFS= read -r dir; do
+        [[ -d "$dir" ]] && echo "$dir"
+    done | sort -u | fzf)
+fi
+
+[[ -z "$selected" ]] && exit 0
+
+# Canonicalize path
+selected=$(cd "$selected" 2>/dev/null && pwd -P)
+
+# Sanitize session name: strip leading dots, replace illegal characters with underscore
+selected_name=$(basename "$selected" | sed -e 's/^[.]//' -e 's/[.: ]/_/g')
+
+# Fallback if name is empty (e.g. root '/')
+[[ -z "$selected_name" ]] && selected_name="root"
+
+# Create detached session if it doesn't already exist
+if ! tmux has-session -t "=$selected_name" 2>/dev/null; then
+    tmux new-session -ds "$selected_name" -c "$selected"
+fi
+
+# Switch if inside tmux, or attach if running from a raw terminal
+if [[ -z "$TMUX" ]]; then
+    tmux attach-session -t "$selected_name"
+else
+    tmux switch-client -t "$selected_name"
+fi
